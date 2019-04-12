@@ -2,161 +2,165 @@ import os
 import tensorflow as tf
 from tqdm import tqdm
 import json
+import time
 
 os.chdir('../')
 cwd = os.getcwd()
+out_path = './datasetOutput/'
 
 def getDir(phase):
 
-    DIR = './resources/dataset/' + phase
-    TRAIN_DIR = os.path.join(cwd, DIR)
+    DIR = './resources/dataset/%s'%phase
+    DATASET_DIR = os.path.join(cwd, DIR)
 
-    return TRAIN_DIR
-
-def createFolders(phase):
-
-    TRAIN_DIR = getDir(phase)
-
-    if not os.path.isdir('%s/datasetOutput'%TRAIN_DIR):
-        if phase =='training/final':
-            os.mkdir(TRAIN_DIR)
-            os.mkdir('%s/datasetOutput'%TRAIN_DIR)
-            print('Creating %s/datasetOutput folder.'%phase)
-
-    if not os.path.isdir('%s/datasetOutput/'%TRAIN_DIR):
-        os.mkdir('%s/datasetOutput'%TRAIN_DIR)
-        print('Creating %s/datasetOutput folder.'%phase)
-    else:
-        pass
+    return DATASET_DIR
 
 def createFiles(phase):
 
-    TRAIN_DIR = getDir(phase)
+    DATASET_DIR = getDir(phase)
 
-    out_path = './datasetOutput/'
+    file = os.path.join(out_path, '%s_tags.txt'%phase)
+    path = os.path.join(cwd, DATASET_DIR, file)
 
-    trainOutFile = os.path.join(out_path, '_train.txt')
-    trainOutPath = os.path.join(cwd, TRAIN_DIR, trainOutFile)
-    labelOutFile = os.path.join(out_path, '_label.txt')
-    labelOutPath = os.path.join(cwd, TRAIN_DIR, labelOutFile)
-    jsonOutFile = os.path.join(out_path, 'word_to_id.json')
-    jsonOutPath = os.path.join(cwd, TRAIN_DIR, jsonOutFile)
+    return path
 
-    final_jsonFile = os.path.join(out_path, 'word_to_id_final.json')
-    final_jsonPath = os.path.join(cwd, TRAIN_DIR, final_jsonFile)
+"""
+    Read the 4 utf8 files in the specified phase (training or gold),
+    wrap them into one list, create one file of labels (BIES) from the
+    4 utf8 files, then create (1) a unique char to id dict and (2) one
+    file of ids from the 4 utf8 files
+"""
+def generateCharsAndLabels(phase):
 
-
-    return trainOutPath, labelOutPath, jsonOutPath, final_jsonPath
-
-def generateSet(phase, TRAIN_DIR):
-
-    train, label, _, _ = createFiles(phase)
-    
-    train = open(train,'w')
-    label = open(label, 'w')
-
-    for utf8File in os.listdir(TRAIN_DIR):
+    DATASET_DIR = getDir(phase)
+    file = createFiles(phase)
+    chars = []
+    tags_file = open(file, 'w')
+    for utf8File in os.listdir(DATASET_DIR):
         if utf8File.endswith('.utf8'):
-            with open(os.path.join(cwd, TRAIN_DIR, utf8File), 'rb') as f:
-                # print('reading', f)
+            with open(os.path.join(cwd, DATASET_DIR, utf8File), 'rb') as fb:
+                contentslen = fb.read().decode('UTF8')
+            with open(os.path.join(cwd, DATASET_DIR, utf8File), 'rb') as f:
+                print("tagging %s file"%utf8File.split('/')[-1])
                 contents = f.readline().decode('UTF-8')
-                count=1
-                while contents:
-                    contents = f.readline().decode('UTF-8')
-                    for char in contents.split():
-                        lenChar = len(char)
-                        if lenChar>1:
-                            beginning = char[:1]
-                            bTag = 'B'
-                            end = char[-1]
-                            eTag = 'E'
-                            line = beginning + end
-                            tag = bTag + eTag
-                            if lenChar>2:
-                                inside = char[1:-1]
-                                iTag = 'I'
-                                line = beginning + inside + end
-                                tag = bTag + iTag + eTag
-                        elif len(char) == 1:
-                            single = char
-                            line = char
-                            tag = 'S'
-                        else:
-                            pass
-                        train.write(line)
-                        label.write(tag)
-                    train.write('\n')
-                    label.write('\n')
-                    count+=1
-        else:
-            continue
+                with tqdm(desc="chars & ids", total=len(contentslen)) as pbar:
+                    while contents:
+                        contents = f.readline().decode('UTF-8')
+                        for x in contents.split():
+                            if(len(x) == 1):
+                                tag = "S"
+                            elif (len(x) == 2):
+                                tag = "BE"
+                            elif(len(x) == 3):
+                                tag = "BIE"
+                            elif(len(x)>3):
+                                tag = "B"+str((len(x)-2)*"I")+"E"
+                            chars.append(x)
+                            tags_file.write(tag)
+                        tags_file.write('\n')
+                        pbar.update(len(contents))
+    # Creates the unique char to id dict from the 4 utf8 files
+    unique_char_to_id(phase, chars)
+    # Converts the 4 utf8 files contents into 1 file char to ids
+    char_to_id(phase, chars)
 
-def word_to_id(inputFile, outputFile):
+"""
+    Takes the phase (training or gold), a list wrapping the 4 utf8 files as input
+    and writes a txt file converted from chars to ids
+"""
+def char_to_id(phase, chars):
 
-    dictPath = open(outputFile, 'w')
+    DATASET_DIR = getDir(phase)
+    output_file = os.path.join(DATASET_DIR, out_path, 'char_to_id.txt')
+    word_to_id_dict = os.path.join(DATASET_DIR, out_path, 'unique_char_to_id.json')
 
-    with open(inputFile, 'r') as f:
-        data = f.read()
-        id=0
-        word_to_id_dict = {}
-        for word in data:
-            if word in word_to_id_dict.keys():
-                continue
-            else:
-                word_to_id_dict[word]=id
-                id+=1
-        # print(word_to_id_dict)
-        json.dump(word_to_id_dict, dictPath)
+    char_to_id_file = open(output_file, 'w')
+    all_dict = jsonToDict(word_to_id_dict)
+    print("Json dict loaded successfully")
 
-def word_to_id_final(json1, json2, final_json):
+    print("Converting the wrapped chars to ids")
+    with tqdm(desc="chars->ids", total=len(chars)) as pbar:
+        for setChar in chars:
+            pbar.update(1)
+            if len(setChar)==1:
+                for key1, value1 in all_dict.items():
+                    if (len(key1) == 1) and (key1 == setChar):
+                        char_to_id_file.write(str(value1))
+                        char_to_id_file.write(',')
+            elif len(setChar)>1:
+                for char in setChar:
+                    for key2, value2 in all_dict.items():
+                        if char == key2:
+                            char_to_id_file.write(str(value2))
+                            char_to_id_file.write(',')
+    char_to_id_file.close()
 
-    final_dict = open(final_json, 'w')
+"""
+    Takes as input the path to a json file and loads it into a dict
+"""
 
-    with open(json1) as json1_file:
-        json1_dict = json.load(json1_file)
+def jsonToDict(path):
 
-    with open(json2) as json2_file:
-        json2_dict = json.load(json2_file)
+    print("loading json file from %s"%path.split('/')[-1])
+    # DATA_PATH = getDir(path)
+    json_file = os.path.join(cwd, path)
 
-    word_to_id_final = {}
-    word_to_id_final = json2_dict
+    with open(json_file) as fDict:
+        final_dict = json.load(fDict)
 
-    for key, value in word_to_id_final.items():
-        if value == len(word_to_id_final)-1:
-            last_value = value
-            print('Starting from value: ', last_value)
+    return final_dict
 
-    for key, value in json1_dict.items():
-        if key not in word_to_id_final.keys():
-            last_value+=1
-            word_to_id_final[key]=last_value
-    # print(word_to_id_final)
-    json.dump(word_to_id_final, final_dict)
+"""
+    Takes as input the phase (training or gold) and a list of characters
+    (here the characters wrapped from 4 different utf8 files sent from the
+    generateCharsAndLabels function) and creates a json file containing unique
+    ids from unigrams and bigrams
+"""
+def unique_char_to_id(phase, chars):
 
-def generate_Set(phase, json):
-    TRAIN_DIR = getDir(phase)
-    generateSet(phase, TRAIN_DIR)
-    train_input, label_input, json, _ = createFiles(phase)
-    word_to_id(train_input, json)
+    DATASET_DIR = getDir(phase)
+    output_file = os.path.join(DATASET_DIR, out_path, 'unique_char_to_id.json')
+    dictPath = open(output_file, 'w')
+
+    word_to_id_dict = {}
+    word_to_id_dict["<PAD>"] = 0
+    word_to_id_dict["<START>"] = 1
+    word_to_id_dict["<UNK>"] = 2
+    bigram_id = 3
+    unigram_id = 0
+
+    print("Creating the unique bigram chars to ids dict")
+    with tqdm(desc="Unique-bigrams-chars->ids", total=len(chars)) as pbar:
+        for x in chars:
+            pbar.update(1)
+            if (len(x) > 1):
+                for i in range(len(x)-1):
+                    if x[i:i+2] in word_to_id_dict.keys():
+                        pass
+                    else:
+                        word_to_id_dict[x[i:i+2]]=bigram_id
+                        bigram_id+=1
+                    i+=1
+    unigram_id = bigram_id
+    print("found %s unique bigrams in "%bigram_id, phase)
+    print("Creating the unique unigram chars to ids dict")
+    with tqdm(desc="Unique-unigrams-chars->ids", total=len(chars)) as ppbar:
+        for y in chars:
+            ppbar.update(1)
+            for char in y:
+                if char in word_to_id_dict.keys():
+                    continue
+                else:
+                    word_to_id_dict[char]=unigram_id
+                    unigram_id+=1
+    print("found %s unique unigrams in "%unigram_id, phase)
+    json.dump(word_to_id_dict, dictPath)
+    dictPath.close()
+
 
 def main(_):
-
-    createFolders('training')
-    createFolders('gold')
-    createFolders('training/final')
-
-    generatedSets=0
-
-    _, _, json1, _ = createFiles('training')
-    _, _, json2, _ = createFiles('gold')
-
-    generate_Set('training', json1)
-    generatedSets+=1
-    generate_Set('gold', json2)
-    generatedSets+=1
-    if(generatedSets == 2):
-        _, _, final_json, _ = createFiles('training/final')
-        word_to_id_final(json1, json2, final_json)
+    generateCharsAndLabels('training')
+    generateCharsAndLabels('gold')
 
 
 if __name__ == '__main__':
