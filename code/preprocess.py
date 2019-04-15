@@ -4,6 +4,7 @@ from tqdm import tqdm
 import json
 import time
 
+
 os.chdir('../')
 cwd = os.getcwd()
 out_path = './datasetOutput/'
@@ -50,6 +51,7 @@ def generateCharsAndLabels(phase, uni_or_bi):
     DATASET_DIR = getDir(phase)
     file = createFiles(phase)
     chars = []
+    # wordlist = []
 
     for utf8File in os.listdir(DATASET_DIR):
         if utf8File.endswith('.utf8'):
@@ -70,6 +72,7 @@ def generateCharsAndLabels(phase, uni_or_bi):
                         while contents:
                             contents = f.readline().decode('UTF-8')
                             for x in contents.split():
+                                # wordlist.append(list(x))
                                 if(len(x) == 1):
                                     tag = "S"
                                 elif (len(x) == 2):
@@ -95,7 +98,7 @@ def generateCharsAndLabels(phase, uni_or_bi):
 def char_to_id(phase, file_to_convert, uni_or_bi):
 
     DATASET_DIR = getDir(phase)
-
+    chars_num = 0
     if (uni_or_bi == 'unigrams'):
         word_to_id_dict = os.path.join(DATASET_DIR, out_path, 'unique_unigrams_char_to_id.json')
         output_file = os.path.join(DATASET_DIR, out_path, 'uni_char_to_id.txt')
@@ -123,7 +126,9 @@ def char_to_id(phase, file_to_convert, uni_or_bi):
                                 char_to_id_file.write(str(all_dict[char]))
                                 char_to_id_file.write(',')
                             else:
-                                print("%s does not exist in the dictionary"%char)
+                                char_to_id_file.write(str(all_dict['<UNK>']))
+                                char_to_id_file.write(',')
+                                # print("%s is <UNK>"%char)
                     char_to_id_file.write('\n')
                     pbar.update(len(contents))
                 elif uni_or_bi == 'bigrams':
@@ -134,7 +139,10 @@ def char_to_id(phase, file_to_convert, uni_or_bi):
                                     char_to_id_file.write(str(all_dict[x[i:i+2]]))
                                     char_to_id_file.write(',')
                                 else:
-                                    print('%s not found in the dictionary'%x)
+                                    char_to_id_file.write(str(all_dict['<UNK>']))
+                                    char_to_id_file.write(',')
+                                    # print('%s is <UNK>'%x)
+
                     char_to_id_file.write('\n')
                     pbar.update(len(contents))
     char_to_id_file.close()
@@ -173,25 +181,32 @@ def unique_char_to_id(phase, chars, uni_or_bi):
 
 
     word_to_id_dict = {}
+    wordlist = []
+
+    word_to_id_dict["<PAD>"] = 0
+    # word_to_id_dict["<START>"] = 1
+    word_to_id_dict["<UNK>"] = 1
 
     if(uni_or_bi == 'unigrams'):
         id = 3
         print("Creating the unique unigram chars to ids dict")
-        word_to_id_dict["<PAD>"] = 0
-        word_to_id_dict["<START>"] = 1
-        word_to_id_dict["<UNK>"] = 2
         with tqdm(desc="Unique-unigrams-chars->ids", total=len(chars)) as ppbar:
             for y in chars:
                 ppbar.update(1)
                 for char in y:
                     if char in word_to_id_dict.keys():
-                        pass
+                        continue
                     else:
-                        word_to_id_dict[char]=id
-                        id+=1
+                        wordlist.append(char)
+                        if(wordlist.count(char)) >= 10:
+                            word_to_id_dict[char]=id
+                            id+=1
+                        else:
+                            pass
         print("found %s unique unigrams in "%id, phase)
         json.dump(word_to_id_dict, dict_path)
         dict_path.close()
+
     elif (uni_or_bi == 'bigrams'):
 
         final_dict = jsonToDict(uni_unique_file)
@@ -208,10 +223,14 @@ def unique_char_to_id(phase, chars, uni_or_bi):
                 if (len(x) > 1):
                     for i in range(len(x)-1):
                         if x[i:i+2] in word_to_id_dict.keys():
-                            pass
+                            continue
                         else:
+                            # wordlist.append(x[i:i+2])
+                            # if(wordlist.count(x[i:i+2])) >= 10:
                             id+=1
                             word_to_id_dict[x[i:i+2]]=id
+                            # else:
+                            #     pass
                         i+=1
         json.dump(word_to_id_dict, dict_path)
         dict_path.close()
@@ -221,11 +240,12 @@ def unique_char_to_id(phase, chars, uni_or_bi):
         print('please specify unigrams or bigrams')
 
 def main(_):
-    generateCharsAndLabels('all', 'unigrams')
-    generateCharsAndLabels('all', 'bigrams')
-    # generateCharsAndLabels('gold', 'unigrams')
-    # generateCharsAndLabels('training', 'bigrams')
-    # generateCharsAndLabels('gold', 'bigrams')
+    # generateCharsAndLabels('all', 'unigrams')
+    # generateCharsAndLabels('all', 'bigrams')
+    generateCharsAndLabels('training', 'unigrams')
+    generateCharsAndLabels('gold', 'unigrams')
+    generateCharsAndLabels('training', 'bigrams')
+    generateCharsAndLabels('gold', 'bigrams')
 
 
 if __name__ == '__main__':
