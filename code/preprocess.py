@@ -3,13 +3,10 @@ import tensorflow as tf
 from tqdm import tqdm
 import json
 import time
-import numpy as np
-
 
 os.chdir('../')
 cwd = os.getcwd()
 out_path = './datasetOutput/'
-created = False
 
 def getDir(phase):
 
@@ -46,13 +43,9 @@ def createTagFile(phase):
 """
 def generateCharsAndLabels(phase, uni_or_bi):
 
-    global created
-
-    # if not created:
     DATASET_DIR = getDir(phase)
 
     lines = []
-    # wordlist = []
 
     for utf8File in os.listdir(DATASET_DIR):
         if utf8File.endswith('.utf8'):
@@ -78,6 +71,8 @@ def generate(lines, phase):
     tags_file = open(file, 'w')
     with tqdm(desc="chars & ids", total=len(lines)) as pbar:
         for line in lines:
+            chars_line = []
+            tags_line = []
             pbar.update(1)
             for x in line.split():
                 if(len(x) == 1):
@@ -88,9 +83,15 @@ def generate(lines, phase):
                     tag = "BIE"
                 elif(len(x)>3):
                     tag = "B"+str((len(x)-2)*"I")+"E"
-                chars.append(x)
-                tags.append(tag)
                 tags_file.write(tag)
+                if phase != 'predict':
+                    chars.append(x)
+                if phase == 'predict':
+                    tags_line.append(tag)
+                    chars_line.append(x)
+            if phase == 'predict':
+                chars.append(chars_line)
+                tags.append(tags_line)
             tags_file.write('\n')
     return chars, tags
 
@@ -106,9 +107,6 @@ def char_to_id(phase, lines, uni_or_bi):
     if (uni_or_bi == 'unigrams'):
         word_to_id_dict = os.path.join(DATASET_DIR, out_path, 'unique_unigrams_char_to_id.json')
         output_file = os.path.join(DATASET_DIR, out_path, 'uni_char_to_id.txt')
-    # elif (uni_or_bi == 'bigrams'):
-    #     word_to_id_dict = os.path.join(DATASET_DIR, out_path, 'unique_bigrams_char_to_id.json')
-    #     output_file = os.path.join(DATASET_DIR, out_path, 'bi_char_to_id.txt')
 
     char_to_id_file = open(output_file, 'w')
     all_dict = jsonToDict(word_to_id_dict)
@@ -116,39 +114,27 @@ def char_to_id(phase, lines, uni_or_bi):
 
     print("Converting the wrapped chars to ids")
 
-    char_toId = []
+    sentence_toId = []
 
     with tqdm(desc="chars & ids", total=len(lines)) as pbar:
         if uni_or_bi == 'unigrams':
             for x in lines:
+                char_toId = []
                 pbar.update(1)
                 for char in x:
                     if char in all_dict.keys():
                         char_to_id_file.write(str(all_dict[char]))
                         char_to_id_file.write(',')
                         char_toId.append(all_dict[char])
-                    else:
-                        char_to_id_file.write(str(all_dict['<UNK>']))
-                        char_to_id_file.write(',')
-                        char_toId.append(all_dict['<UNK>'])
+                    # else:
+                        # char_to_id_file.write(str(all_dict['<UNK>']))
+                        # char_to_id_file.write(',')
+                        # char_toId.append(all_dict['<UNK>'])
                         # print("%s is <UNK>"%char)
+                sentence_toId.append(char_toId)
                 char_to_id_file.write('\n')
-    return char_toId
-        # elif uni_or_bi == 'bigrams':
-        #     for x in lines:
-        #         pbar.update(1)
-        #         if (len(x) > 1):
-        #             for i in range(len(x)-1):
-        #                 if x[i:i+2] in all_dict.keys():
-        #                     char_to_id_file.write(str(all_dict[x[i:i+2]]))
-        #                     char_to_id_file.write(',')
-        #                 else:
-        #                     char_to_id_file.write(str(all_dict['<UNK>']))
-        #                     char_to_id_file.write(',')
-        #                     # print('%s is <UNK>'%x)
-        #             char_to_id_file.write('\n')
-    # char_to_id_file.close()
-
+            # print(sentence_toId)
+    return sentence_toId
 
 """
     Takes as input the path to a json file and loads it into a dict
@@ -179,15 +165,11 @@ def unique_char_to_id(phase, chars, uni_or_bi):
 
     if (uni_or_bi == 'unigrams'):
         dict_path = open(uni_unique_file, 'w')
-    # elif (uni_or_bi == 'bigrams'):
-    #     dict_path = open(bi_unique_file, 'w')
-
 
     word_to_id_dict = {}
     wordlist = []
 
     word_to_id_dict["<PAD>"] = 0
-    # word_to_id_dict["<START>"] = 1
     word_to_id_dict["<UNK>"] = 1
 
     if(uni_or_bi == 'unigrams'):
@@ -212,44 +194,8 @@ def unique_char_to_id(phase, chars, uni_or_bi):
         print("found %s unique unigrams in "%id, phase)
         json.dump(word_to_id_dict, dict_path)
         dict_path.close()
-
-    # elif (uni_or_bi == 'bigrams'):
-    #
-    #     final_dict = jsonToDict(uni_unique_file)
-    #     idKey = list(final_dict.values())
-    #     id = int(idKey[-1])
-    #
-    #     print("Creating the unique bigram chars to ids dict for %s"%phase)
-    #     with tqdm(desc="Unique-bigrams-chars->ids", total=len(chars)) as pbar:
-    #         for x in chars:
-    #             pbar.update(1)
-    #             if (len(x) > 1):
-    #                 for i in range(len(x)-1):
-    #                     if x[i:i+2] in word_to_id_dict.keys():
-    #                         continue
-    #                     else:
-    #                         # wordlist.append(x[i:i+2])
-    #                         # if(wordlist.count(x[i:i+2])) >= 10:
-    #                         id+=1
-    #                         word_to_id_dict[x[i:i+2]]=id
-    #                         # else:
-    #                         #     pass
-    #                     i+=1
-    #     json.dump(word_to_id_dict, dict_path)
-    #     dict_path.close()
-    #     print("found %s unique bigrams in "%id, phase)
-
-    # else:
-    #     print('please specify unigrams or bigrams')
-
 def main(_):
     generateCharsAndLabels('all', 'unigrams')
-    # generateCharsAndLabels('all', 'bigrams')
-    # generateCharsAndLabels('training', 'unigrams')
-    # generateCharsAndLabels('gold', 'unigrams')
-    # generateCharsAndLabels('training', 'bigrams')
-    # generateCharsAndLabels('gold', 'bigrams')
-
 
 if __name__ == '__main__':
   tf.app.run()

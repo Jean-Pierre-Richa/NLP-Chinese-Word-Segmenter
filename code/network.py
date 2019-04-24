@@ -19,7 +19,7 @@ HIDDEN_SIZE = 100
 
 os.chdir('../')
 cwd = os.getcwd()
-ckpt = os.path.join(cwd , "checkpoints/weights.hdf5")
+ckpt = os.path.join(cwd , "resources/weights.hdf5")
 
 def getDir(phase):
 
@@ -50,11 +50,6 @@ def get_vsize(uni_or_bi):
     idKey = list(final_dict.values())
     vocab_size = int(idKey[-1])+1
     print('vocab size', vocab_size)
-
-    # longest = max(open(text_file), key=len)
-    # for x in longest.split(',')[:-1]:
-    #     max_length+=1
-    # print('max_length ', max_length)
 
     return vocab_size
 
@@ -102,18 +97,6 @@ def label_to_id(data_list):
         data_labeled.append(data_sub_list)
     return data_labeled
 
-def id_to_label(id_list):
-
-    labels_dict = {1:'B', 2:'I', 3:'E', 4:'S'}
-
-    id_data = []
-
-    for id in id_list:
-        id_sub_list = []
-        for t_l in id:
-            id_sub_list.append(labels_dict[t_l])
-        id_data.append(id_sub_list)
-    return id_data
 
 def create_dataset(vocab_size, max_length):
 
@@ -133,7 +116,7 @@ def create_dataset(vocab_size, max_length):
     data_y_labeled = label_to_id(data_y)
 
     data_x = pad_sequences(data_x, truncating='pre', padding='post', maxlen=max_length)
-    data_y_labeled = pad_sequences(data_y_labeled, truncating='pre', padding='post', maxlen=max_length, value=1)
+    data_y_labeled = pad_sequences(data_y_labeled, truncating='pre', padding='post', maxlen=max_length, value=0)
 
     data_y_labeled = to_categorical(data_y_labeled)
 
@@ -157,16 +140,14 @@ def create_model(vocab_size, embedding_size, hidden_size):
     model.add(K.layers.Bidirectional(K.layers.LSTM(hidden_size, dropout=0.2,
            recurrent_dropout=0.2, return_sequences=True), merge_mode='concat'))
     model.add(K.layers.Dense(5, activation='softmax'))
-    optimizer = K.optimizers.Adam()
+    optimizer = K.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
 
-    if not os.path.isdir(os.path.join(cwd, 'checkpoints/')):
-        os.mkdir(os.path.join(cwd, 'checkpoints/'))
-        print('Creating checkpoints folder.')
-    elif os.path.isfile(ckpt):
+    if os.path.isfile(ckpt):
         print("Loading previous checkpoint")
+        print('model created')
         model.load_weights(ckpt)
     else:
-        print("Starting training from scratch")
+        print("model created")
 
     model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['acc'])
 
@@ -178,7 +159,7 @@ def run_training():
     VOCAB_SIZE = get_vsize('unigrams')
     # MAX_LENGTH = 200
     batch_size = 64
-    epochs = 40
+    epochs = 80
     model = create_model(VOCAB_SIZE, EMBEDDING_SIZE, HIDDEN_SIZE)
 
     model.summary()
@@ -195,22 +176,18 @@ def run_training():
     print("Dev size:", len(dev_x))
     print("==============================\n")
 
-    cbk = K.callbacks.TensorBoard(log_dir="logs/{}".format(time()))
+    cbk = K.callbacks.TensorBoard(log_dir="resources/logs/{}".format(time()))
     checkpoint = ModelCheckpoint(ckpt, monitor='acc', verbose=1, save_best_only=False, mode='max')
     callbacks_list = [checkpoint, cbk]
     # model.fit(train_x, train_y, epochs=epochs, batch_size=batch_size, validation_data=(dev_x, dev_y), callbacks=callbacks_list)
     model.fit_generator(batch_generator(train_x, train_y, batch_size=batch_size),
                                         validation_data=(dev_x, dev_y),
                                         # steps_per_epoch=(len(train_x)/batch_size),
-                                        steps_per_epoch=1000,
+                                        steps_per_epoch=100,
                                         epochs=epochs, callbacks=callbacks_list)
     loss_acc = model.evaluate(dev_x, dev_y, verbose=1)
     model.save_weights(ckpt)
     print("Saved model to disk")
 
-#
-# def main(_):
-
 if __name__ == '__main__':
     run_training()
-  # tf.app.run()
