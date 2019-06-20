@@ -20,3 +20,13 @@ Place all your code in the `code` folder. You can create other files.
 Place any additional resources needed for running `predict.py` (such as the weights of your trained model) in the `resources` folder.
 Place your report as `report.pdf` in the root folder.
 Follow the slides for any additional information.
+
+## Preprocessing
+-   python3 preprocess.py
+
+## Training
+-   network.py
+
+## Predict example usage
+-   python3 predict.py dataset_new/predict/predict.utf8 dataset_new/predict/output.txt ./resources/
+ 
